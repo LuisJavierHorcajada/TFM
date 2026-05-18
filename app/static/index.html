@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Standardized system ESI-Bench — CPU, Memory, Disk, Network performance testing with a plugin architecture.">
+    <title>ESI-Bench</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script> -->
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <header class="header" id="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">
+                    <img src="/static/img/logo.jpg" alt="ESI-Bench Logo" style="width: 48px; height: auto;" />
+                </div>
+                <h1>ESI-Bench</h1>
+            </div>
+            <nav class="nav">
+                <button class="nav-btn active" data-section="dashboard" id="nav-dashboard">Dashboard</button>
+                <button class="nav-btn" data-section="history" id="nav-history">History</button>
+                <button class="nav-btn" data-section="compare" id="nav-compare">Compare</button>
+            </nav>
+        </div>
+    </header>
+    <main class="main">
+        <section class="section active" id="section-dashboard">
+            <div class="card glass system-info-card" id="system-info-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                        System Info
+                    </h2>
+                </div>
+                <div class="system-grid" id="system-grid">
+                    <div class="system-stat">
+                        <span class="stat-label">Platform</span>
+                        <span class="stat-value" id="sys-platform">—</span>
+                    </div>
+                    <div class="system-stat">
+                        <span class="stat-label">CPU</span>
+                        <span class="stat-value" id="sys-cpu">—</span>
+                    </div>
+                    <div class="system-stat">
+                        <span class="stat-label">Cores</span>
+                        <span class="stat-value" id="sys-cores">—</span>
+                    </div>
+                    <div class="system-stat">
+                        <span class="stat-label">RAM</span>
+                        <span class="stat-value" id="sys-ram">—</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card glass" id="launcher-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Run Benchmarks
+                    </h2>
+                </div>
+                <div class="benchmark-categories" id="benchmark-categories">
+                </div>
+                <div class="launcher-actions">
+                    <button class="btn btn-ghost" id="btn-select-all">Select All</button>
+                    <button class="btn btn-ghost" id="btn-deselect-all">Deselect All</button>
+                    <button class="btn btn-primary btn-glow" id="btn-run">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Run Selected
+                    </button>
+                </div>
+            </div>
+            <div class="card glass status-card hidden" id="status-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        Running Benchmark
+                    </h2>
+                    <span class="badge badge-running pulse" id="run-status-badge">Running</span>
+                </div>
+                <div class="status-content">
+                    <div class="progress-info">
+                        <span id="status-current">Initializing...</span>
+                        <span id="status-progress">0/0</span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card glass" id="latest-results-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                        Latest Results
+                    </h2>
+                </div>
+                <div class="results-overview" id="results-overview">
+                    <p class="empty-state">No benchmark results yet. Run your first benchmark above!</p>
+                </div>
+            </div>
+        </section>
+        <section class="section" id="section-history">
+            <div class="card glass">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        Benchmark History
+                    </h2>
+                </div>
+                <div class="history-list" id="history-list">
+                    <p class="empty-state">No benchmark runs found.</p>
+                </div>
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </section>
+        <section class="section" id="section-compare">
+            <div class="card glass">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        Compare Runs
+                    </h2>
+                </div>
+                <div class="compare-selectors">
+                    <div class="select-group">
+                        <label>Run A</label>
+                        <select class="select" id="compare-select-a">
+                            <option value="">Select a run...</option>
+                        </select>
+                    </div>
+                    <div class="vs-badge">VS</div>
+                    <div class="select-group">
+                        <label>Run B</label>
+                        <select class="select" id="compare-select-b">
+                            <option value="">Select a run...</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" id="btn-compare">Compare</button>
+                </div>
+                <div class="compare-results" id="compare-results">
+                    <p class="empty-state">Select two runs to compare.</p>
+                </div>
+                <!--
+                <div class="chart-container">
+                    <canvas id="compare-chart"></canvas>
+                </div>
+                -->
+            </div>
+        </section>
+    </main>
+    <div class="toast-container" id="toast-container"></div>
+    <script src="/static/js/app.js?v=3"></script>
+</body>
+</html>

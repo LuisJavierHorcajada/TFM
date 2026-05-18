@@ -1,0 +1,35 @@
+services:
+  benchmark-app:
+    build: .
+    container_name: benchmark-app
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+      - MONGO_DB=benchmarks
+      - BENCHMARK_DISK_PATH=/tmp/benchmark
+    depends_on:
+      mongo:
+        condition: service_started
+    volumes:
+      - benchmark-tmp:/tmp/benchmark
+    networks:
+      - benchmark-net
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    container_name: benchmark-mongo
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - benchmark-net
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
+  benchmark-tmp:
+
+networks:
+  benchmark-net:
+    driver: bridge
