@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     MONGO_URL: str = "mongodb://localhost:27017"
     MONGO_DB: str = "benchmarks"
-    BENCHMARK_DISK_PATH=/mnt/benchmark_data/test
+    BENCHMARK_DISK_PATH: str = "/mnt/benchmark_data/test"
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 8000
 
