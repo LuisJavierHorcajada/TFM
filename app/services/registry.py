@@ -68,7 +68,11 @@ class BenchmarkRegistry:
         """Return info for all registered benchmarks."""
         result = []
         for bm in self.benchmarks.values():
-            result.append(bm.info.model_dump())
+            result.append(
+                bm.info.model_dump()
+                if hasattr(bm.info, "model_dump")
+                else bm.info.dict()
+            )
         return result
 
     def get_benchmark(self, name: str) -> Benchmark | None:

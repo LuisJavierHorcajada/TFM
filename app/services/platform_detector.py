@@ -18,7 +18,12 @@ logger = logging.getLogger("esi_bench.platform")
 IMDS_TIMEOUT_SECONDS = 1.0
 
 
-def _fetch_url(url: str, headers: dict[str, str] | None = None, method: str = "GET", data: bytes | None = None) -> str | None:
+def _fetch_url(
+    url: str,
+    headers: dict[str, str] | None = None,
+    method: str = "GET",
+    data: bytes | None = None,
+) -> str | None:
     """Fetch URL with a short timeout. Returns string body or None on failure."""
     req = urllib.request.Request(url, headers=headers or {}, method=method, data=data)
     try:
@@ -30,33 +35,50 @@ def _fetch_url(url: str, headers: dict[str, str] | None = None, method: str = "G
     return None
 
 
-def _check_aws() -> PlatformInfo | None:
-    """Check AWS IMDS (supports IMDSv2 and IMDSv1)."""
-    # 1. Try IMDSv2 token
-    token_headers = {"X-aws-ec2-metadata-token-ttl-seconds": "60"}
-    token = _fetch_url(
-        "http://169.254.169.254/latest/api/token",
-        headers=token_headers,
-        method="PUT",
-    )
-    headers = {"X-aws-ec2-metadata-token": token} if token else {}
+def _check_openstack() -> PlatformInfo | None:
+    """
+    Check OpenStack native metadata service.
+    OpenStack provides http://169.254.169.254/openstack/latest/meta_data.json
+    which is unique to OpenStack (AWS and Azure do not have this path).
+    """
+    resp = _fetch_url("http://169.254.169.254/openstack/latest/meta_data.json")
+    if not resp:
+        resp = _fetch_url("http://169.254.169.254/openstack/2018-08-27/meta_data.json")
+    if not resp:
+        # Check if the /openstack/ root directory exists
+        resp_root = _fetch_url("http://169.254.169.254/openstack/")
+        if not resp_root:
+            return None
 
-    # Check instance-type
-    instance_type = _fetch_url("http://169.254.169.254/latest/meta-data/instance-type", headers=headers)
-    if not instance_type:
-        return None
+    try:
+        data = json.loads(resp) if resp else {}
+        instance_id = data.get("uuid")
+        instance_type = (
+            data.get("instance_type")
+            or data.get("meta", {}).get("flavor")
+            or data.get("meta", {}).get("instance_type")
+        )
 
-    instance_id = _fetch_url("http://169.254.169.254/latest/meta-data/instance-id", headers=headers)
-    az = _fetch_url("http://169.254.169.254/latest/meta-data/placement/availability-zone", headers=headers)
-    region = az[:-1] if az and len(az) > 1 else az
+        # If flavor not in JSON, get it from the EC2 compatibility layer
+        if not instance_type:
+            instance_type = _fetch_url("http://169.254.169.254/latest/meta-data/instance-type")
 
-    return PlatformInfo(
-        provider="aws",
-        instance_type=instance_type.strip(),
-        region=region.strip() if region else None,
-        instance_id=instance_id.strip() if instance_id else None,
-        details={"availability_zone": az.strip() if az else None},
-    )
+        az = data.get("availability_zone")
+        if not az:
+            az = _fetch_url("http://169.254.169.254/latest/meta-data/placement/availability-zone")
+
+        hostname = data.get("hostname") or data.get("name")
+
+        return PlatformInfo(
+            provider="openstack",
+            instance_type=str(instance_type).strip() if instance_type else "custom",
+            region=str(az).strip() if az else None,
+            instance_id=instance_id,
+            details={"hostname": hostname, "project_id": data.get("project_id")},
+        )
+    except Exception as e:
+        logger.debug("Failed to parse OpenStack metadata: %s", e)
+        return PlatformInfo(provider="openstack")
 
 
 def _check_azure() -> PlatformInfo | None:
@@ -88,29 +110,76 @@ def _check_azure() -> PlatformInfo | None:
         return None
 
 
-def _check_openstack() -> PlatformInfo | None:
-    """Check OpenStack metadata service."""
-    resp = _fetch_url("http://169.254.169.254/openstack/latest/meta_data.json")
-    if not resp:
+def _check_aws() -> PlatformInfo | None:
+    """
+    Check genuine AWS IMDS.
+    Verifies AWS-specific dynamic identity document or IMDSv2 to avoid
+    misidentifying OpenStack's EC2 emulation layer as AWS.
+    """
+    # 1. AWS dynamic instance identity document (only exists on authentic AWS)
+    identity_doc = _fetch_url("http://169.254.169.254/latest/dynamic/instance-identity/document")
+    if identity_doc:
+        try:
+            data = json.loads(identity_doc)
+            if "accountId" in data and "instanceType" in data:
+                return PlatformInfo(
+                    provider="aws",
+                    instance_type=data.get("instanceType"),
+                    region=data.get("region"),
+                    instance_id=data.get("instanceId"),
+                    details={
+                        "availability_zone": data.get("availabilityZone"),
+                        "account_id": data.get("accountId"),
+                        "architecture": data.get("architecture"),
+                    },
+                )
+        except Exception:
+            pass
+
+    # 2. Try IMDSv2 token
+    token_headers = {"X-aws-ec2-metadata-token-ttl-seconds": "60"}
+    token = _fetch_url(
+        "http://169.254.169.254/latest/api/token",
+        headers=token_headers,
+        method="PUT",
+    )
+    headers = {"X-aws-ec2-metadata-token": token} if token else {}
+
+    # Check instance-type
+    instance_type = _fetch_url(
+        "http://169.254.169.254/latest/meta-data/instance-type", headers=headers
+    )
+    if not instance_type:
         return None
 
-    try:
-        data = json.loads(resp)
-        instance_id = data.get("uuid")
-        instance_type = data.get("instance_type") or data.get("meta", {}).get("flavor")
-        az = data.get("availability_zone")
-        hostname = data.get("hostname") or data.get("name")
+    # Check DMI to verify we are not in OpenStack / QEMU / KVM
+    vendor = ""
+    for path in ["/sys/class/dmi/id/sys_vendor", "/sys/class/dmi/id/board_vendor", "/sys/class/dmi/id/product_name"]:
+        try:
+            if os.path.exists(path):
+                with open(path, "r", errors="ignore") as f:
+                    vendor += f.read().lower()
+        except Exception:
+            pass
 
-        return PlatformInfo(
-            provider="openstack",
-            instance_type=str(instance_type) if instance_type else None,
-            region=az,
-            instance_id=instance_id,
-            details={"hostname": hostname, "project_id": data.get("project_id")},
-        )
-    except Exception as e:
-        logger.debug("Failed to parse OpenStack metadata: %s", e)
+    if "openstack" in vendor or "kolla" in vendor or "bochs" in vendor:
         return None
+
+    instance_id = _fetch_url(
+        "http://169.254.169.254/latest/meta-data/instance-id", headers=headers
+    )
+    az = _fetch_url(
+        "http://169.254.169.254/latest/meta-data/placement/availability-zone", headers=headers
+    )
+    region = az[:-1] if az and len(az) > 1 else az
+
+    return PlatformInfo(
+        provider="aws",
+        instance_type=instance_type.strip(),
+        region=region.strip() if region else None,
+        instance_id=instance_id.strip() if instance_id else None,
+        details={"availability_zone": az.strip() if az else None},
+    )
 
 
 def _check_dmi_and_env() -> PlatformInfo:
@@ -128,7 +197,10 @@ def _check_dmi_and_env() -> PlatformInfo:
 
     vendor = ""
     product = ""
-    for path, var in [("/sys/class/dmi/id/sys_vendor", "vendor"), ("/sys/class/dmi/id/product_name", "product")]:
+    for path, var in [
+        ("/sys/class/dmi/id/sys_vendor", "vendor"),
+        ("/sys/class/dmi/id/product_name", "product"),
+    ]:
         try:
             if os.path.exists(path):
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -141,12 +213,12 @@ def _check_dmi_and_env() -> PlatformInfo:
             pass
 
     combined = f"{vendor} {product}".lower()
+    if "openstack" in combined or "kolla" in combined:
+        return PlatformInfo(provider="openstack", details={"dmi_vendor": vendor, "dmi_product": product})
     if "amazon" in combined or "ec2" in combined:
         return PlatformInfo(provider="aws", details={"dmi_vendor": vendor, "dmi_product": product})
     if "microsoft" in combined or "azure" in combined:
         return PlatformInfo(provider="azure", details={"dmi_vendor": vendor, "dmi_product": product})
-    if "openstack" in combined or "kolla" in combined:
-        return PlatformInfo(provider="openstack", details={"dmi_vendor": vendor, "dmi_product": product})
     if "kvm" in combined or "qemu" in combined:
         return PlatformInfo(provider="kvm/qemu", details={"dmi_vendor": vendor, "dmi_product": product})
 
@@ -158,19 +230,19 @@ def _check_dmi_and_env() -> PlatformInfo:
 
 def detect_platform() -> PlatformInfo:
     """
-    Run detection strategies sequentially:
-    1. AWS IMDS
+    Run detection strategies in priority order:
+    1. OpenStack IMDS (native openstack/ metadata check prevents false positives from EC2 emulation)
     2. Azure IMDS
-    3. OpenStack IMDS
+    3. AWS IMDS (verifies authentic AWS identity document)
     4. DMI / Environment fallback
     """
     try:
-        aws_info = _check_aws()
-        if aws_info:
-            logger.info("Detected platform: AWS (%s, %s)", aws_info.instance_type, aws_info.region)
-            return aws_info
+        os_info = _check_openstack()
+        if os_info:
+            logger.info("Detected platform: OpenStack (%s, %s)", os_info.instance_type, os_info.region)
+            return os_info
     except Exception as e:
-        logger.debug("AWS detection error: %s", e)
+        logger.debug("OpenStack detection error: %s", e)
 
     try:
         azure_info = _check_azure()
@@ -181,14 +253,13 @@ def detect_platform() -> PlatformInfo:
         logger.debug("Azure detection error: %s", e)
 
     try:
-        os_info = _check_openstack()
-        if os_info:
-            logger.info("Detected platform: OpenStack (%s, %s)", os_info.instance_type, os_info.region)
-            return os_info
+        aws_info = _check_aws()
+        if aws_info:
+            logger.info("Detected platform: AWS (%s, %s)", aws_info.instance_type, aws_info.region)
+            return aws_info
     except Exception as e:
-        logger.debug("OpenStack detection error: %s", e)
+        logger.debug("AWS detection error: %s", e)
 
     fallback = _check_dmi_and_env()
     logger.info("Detected platform (fallback): %s", fallback.provider)
     return fallback
-

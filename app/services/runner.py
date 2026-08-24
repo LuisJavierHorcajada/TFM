@@ -126,7 +126,8 @@ async def start_run(request: RunRequest) -> str:
 
     # Also persist the initial record to MongoDB
     collection = database.get_collection("results")
-    await collection.insert_one(doc.model_dump())
+    doc_data = doc.model_dump() if hasattr(doc, "model_dump") else doc.dict()
+    await collection.insert_one(doc_data)
 
     return run_id
 
@@ -146,9 +147,14 @@ async def execute_run(run_id: str, params: dict | None = None) -> None:
     # Update status to running
     doc.status = "running"
     doc.system_info = _collect_system_info()
+    sys_info_data = (
+        doc.system_info.model_dump()
+        if hasattr(doc.system_info, "model_dump")
+        else doc.system_info.dict()
+    )
     await collection.update_one(
         {"run_id": run_id},
-        {"$set": {"status": "running", "system_info": doc.system_info.model_dump()}},
+        {"$set": {"status": "running", "system_info": sys_info_data}},
     )
 
     overall_start = time.perf_counter()

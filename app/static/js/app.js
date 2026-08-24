@@ -164,8 +164,8 @@
             platformText = `${prov}${inst}`;
         }
         document.getElementById('sys-platform').textContent = platformText;
-        const osElem = document.getElementById('sys-os');
-        if (osElem) osElem.textContent = info.os || '—';
+        const diskElem = document.getElementById('sys-disk');
+        if (diskElem) diskElem.textContent = info.disk_total_gb ? `${info.disk_total_gb} GB` : '—';
         document.getElementById('sys-cpu').textContent = info.cpu_model || '—';
         document.getElementById('sys-cores').textContent = info.cpu_count;
         document.getElementById('sys-ram').textContent = `${info.ram_total_gb} GB`;
@@ -297,6 +297,7 @@
             }
             sysHtml = `<div class="detail-section"><h4>System Info</h4><div class="detail-grid">
                 <div class="detail-item"><div class="detail-key">Platform</div><div class="detail-val">${esc(platformText)}</div></div>
+                <div class="detail-item"><div class="detail-key">Disk Space</div><div class="detail-val">${si.disk_total_gb ? `${si.disk_total_gb} GB (${si.disk_available_gb || 0} GB free)` : '—'}</div></div>
                 <div class="detail-item"><div class="detail-key">OS</div><div class="detail-val">${esc(si.os)}</div></div>
                 <div class="detail-item"><div class="detail-key">Kernel</div><div class="detail-val">${esc(si.os_version)}</div></div>
                 <div class="detail-item"><div class="detail-key">CPU</div><div class="detail-val">${esc(si.cpu_model)}</div></div>

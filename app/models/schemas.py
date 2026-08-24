@@ -60,6 +60,8 @@ class SystemInfo(BaseModel):
     cpu_count: int
     ram_total_gb: float
     ram_available_gb: float
+    disk_total_gb: float | None = None
+    disk_available_gb: float | None = None
     python_version: str
     platform: PlatformInfo | None = None
 

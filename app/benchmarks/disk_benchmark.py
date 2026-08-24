@@ -2,8 +2,8 @@
 Disk I/O Benchmark Plugin.
 
 Tests:
-  - Sequential write (MB/s) with direct I/O
-  - Sequential read (MB/s) bypassing page cache (O_DIRECT / fadvise)
+  - Sequential write (MB/s)
+  - Sequential read (MB/s)
   - Random write IOPS
   - Random read IOPS
 """
@@ -22,7 +22,7 @@ from app.services.base import Benchmark, BenchmarkInfo
 logger = logging.getLogger("esi_bench.disk")
 
 # --- Benchmark Configuration ---
-SIZE_MB = 2000
+SIZE_MB = 1024
 RANDOM_OPS = 5000
 SEQ_BLOCK_SIZE = 1024 * 1024  # 1MB
 RAND_BLOCK_SIZE = 4096        # 4KB
@@ -33,7 +33,7 @@ O_DIRECT = getattr(os, "O_DIRECT", 0)
 
 
 def _create_direct_buffer(size: int, fill: bytes | None = None) -> mmap.mmap:
-    """Create a page-aligned memory buffer required for O_DIRECT."""
+    """Create a page-aligned memory buffer suitable for O_DIRECT."""
     buf = mmap.mmap(-1, size)
     if fill:
         fill_len = len(fill)
@@ -44,19 +44,22 @@ def _create_direct_buffer(size: int, fill: bytes | None = None) -> mmap.mmap:
 
 
 def _sequential_write(file_path: str, size_mb: int) -> float:
-    """Write a file sequentially with O_DIRECT / fsync. Returns MB/s."""
+    """Write a file sequentially using direct I/O (with standard I/O fallback). Returns MB/s."""
     total_bytes = size_mb * 1024 * 1024
     pattern = os.urandom(ALIGNMENT)
     buf = _create_direct_buffer(SEQ_BLOCK_SIZE, fill=pattern)
 
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     fd = None
+
+    # Try O_DIRECT first
     if O_DIRECT:
         try:
             fd = os.open(file_path, flags | O_DIRECT, 0o666)
         except OSError:
-            pass
+            fd = None
 
+    # Fallback to standard open
     if fd is None:
         fd = os.open(file_path, flags, 0o666)
 
@@ -64,11 +67,25 @@ def _sequential_write(file_path: str, size_mb: int) -> float:
     start = time.perf_counter()
     try:
         while written < total_bytes:
-            os.write(fd, buf)
+            try:
+                os.write(fd, buf)
+            except OSError as e:
+                # If O_DIRECT write fails (e.g. EINVAL on virtualized disks), retry without O_DIRECT
+                logger.debug("Direct write failed (%s), falling back to standard write", e)
+                os.close(fd)
+                fd = os.open(file_path, flags, 0o666)
+                while written < total_bytes:
+                    os.write(fd, buf)
+                    written += SEQ_BLOCK_SIZE
+                break
             written += SEQ_BLOCK_SIZE
         os.fsync(fd)
     finally:
-        os.close(fd)
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
         buf.close()
 
     elapsed = time.perf_counter() - start
@@ -76,23 +93,26 @@ def _sequential_write(file_path: str, size_mb: int) -> float:
 
 
 def _sequential_read(file_path: str) -> float:
-    """Read a file sequentially with O_DIRECT to bypass page cache. Returns MB/s."""
+    """Read a file sequentially using direct I/O + page-cache invalidation. Returns MB/s."""
     file_size = os.path.getsize(file_path)
     buf = _create_direct_buffer(SEQ_BLOCK_SIZE)
 
     flags = os.O_RDONLY
     fd = None
+    use_direct = False
+
     if O_DIRECT:
         try:
             fd = os.open(file_path, flags | O_DIRECT)
+            use_direct = True
         except OSError:
-            pass
+            fd = None
 
     if fd is None:
         fd = os.open(file_path, flags)
 
     try:
-        # Invalidate page cache for this file if supported
+        # Invalidate page cache before reading
         if hasattr(os, "posix_fadvise"):
             try:
                 os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
@@ -102,13 +122,35 @@ def _sequential_read(file_path: str) -> float:
         start = time.perf_counter()
         total_read = 0
         while total_read < file_size:
-            n = os.read(fd, SEQ_BLOCK_SIZE)
-            if not n:
+            try:
+                # Use readv to read directly into aligned mmap buffer (required for O_DIRECT)
+                n = os.readv(fd, [buf])
+                if not n:
+                    break
+                total_read += n
+            except OSError as e:
+                # Fallback to standard read if direct readv errors
+                logger.debug("Direct readv failed (%s), falling back to standard read", e)
+                os.close(fd)
+                fd = os.open(file_path, flags)
+                if hasattr(os, "posix_fadvise"):
+                    try:
+                        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+                    except OSError:
+                        pass
+                while total_read < file_size:
+                    chunk = os.read(fd, SEQ_BLOCK_SIZE)
+                    if not chunk:
+                        break
+                    total_read += len(chunk)
                 break
-            total_read += len(n)
         elapsed = time.perf_counter() - start
     finally:
-        os.close(fd)
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
         buf.close()
 
     size_mb = file_size / (1024 * 1024)
@@ -124,11 +166,12 @@ def _random_write_iops(file_path: str, file_size: int, num_ops: int) -> float:
     buf = _create_direct_buffer(RAND_BLOCK_SIZE, fill=os.urandom(RAND_BLOCK_SIZE))
     flags = os.O_RDWR
     fd = None
+
     if O_DIRECT:
         try:
             fd = os.open(file_path, flags | O_DIRECT)
         except OSError:
-            pass
+            fd = None
 
     if fd is None:
         fd = os.open(file_path, flags)
@@ -137,10 +180,21 @@ def _random_write_iops(file_path: str, file_size: int, num_ops: int) -> float:
     try:
         for offset in offsets:
             os.lseek(fd, offset, os.SEEK_SET)
-            os.write(fd, buf)
+            try:
+                os.write(fd, buf)
+            except OSError:
+                # Fallback to standard I/O if direct write fails
+                os.close(fd)
+                fd = os.open(file_path, flags)
+                os.lseek(fd, offset, os.SEEK_SET)
+                os.write(fd, buf)
         os.fsync(fd)
     finally:
-        os.close(fd)
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
         buf.close()
 
     elapsed = time.perf_counter() - start
@@ -148,18 +202,20 @@ def _random_write_iops(file_path: str, file_size: int, num_ops: int) -> float:
 
 
 def _random_read_iops(file_path: str, file_size: int, num_ops: int) -> float:
-    """Read blocks from random 4KB-aligned offsets. Returns IOPS."""
+    """Read blocks from random 4KB-aligned offsets into aligned buffer. Returns IOPS."""
     random.seed(42)
     max_blocks = max((file_size - RAND_BLOCK_SIZE) // RAND_BLOCK_SIZE, 1)
     offsets = [random.randint(0, max_blocks - 1) * RAND_BLOCK_SIZE for _ in range(num_ops)]
 
+    buf = _create_direct_buffer(RAND_BLOCK_SIZE)
     flags = os.O_RDONLY
     fd = None
+
     if O_DIRECT:
         try:
             fd = os.open(file_path, flags | O_DIRECT)
         except OSError:
-            pass
+            fd = None
 
     if fd is None:
         fd = os.open(file_path, flags)
@@ -174,10 +230,19 @@ def _random_read_iops(file_path: str, file_size: int, num_ops: int) -> float:
         start = time.perf_counter()
         for offset in offsets:
             os.lseek(fd, offset, os.SEEK_SET)
-            os.read(fd, RAND_BLOCK_SIZE)
+            try:
+                os.readv(fd, [buf])
+            except OSError:
+                # Fallback to standard read if direct read fails
+                os.read(fd, RAND_BLOCK_SIZE)
         elapsed = time.perf_counter() - start
     finally:
-        os.close(fd)
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        buf.close()
 
     return round(num_ops / max(elapsed, 0.0001), 2)
 
