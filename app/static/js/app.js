@@ -157,14 +157,15 @@
         }
     }
     function renderSystemInfo(info) {
-        const cleanRelease = (info.os_version || '').replace(info.hostname, '').trim();
-        let platformText = `${info.os} ${cleanRelease}`;
+        let platformText = 'Bare Metal / Local';
         if (info.platform && info.platform.provider && info.platform.provider !== 'unknown') {
             const prov = info.platform.provider.toUpperCase();
             const inst = info.platform.instance_type ? ` (${info.platform.instance_type})` : '';
             platformText = `${prov}${inst}`;
         }
         document.getElementById('sys-platform').textContent = platformText;
+        const osElem = document.getElementById('sys-os');
+        if (osElem) osElem.textContent = info.os || '—';
         document.getElementById('sys-cpu').textContent = info.cpu_model || '—';
         document.getElementById('sys-cores').textContent = info.cpu_count;
         document.getElementById('sys-ram').textContent = `${info.ram_total_gb} GB`;
@@ -288,8 +289,16 @@
         let sysHtml = '';
         if (result.system_info) {
             const si = result.system_info;
+            let platformText = 'Bare Metal / Local';
+            if (si.platform && si.platform.provider && si.platform.provider !== 'unknown') {
+                const prov = si.platform.provider.toUpperCase();
+                const inst = si.platform.instance_type ? ` (${si.platform.instance_type})` : '';
+                platformText = `${prov}${inst}`;
+            }
             sysHtml = `<div class="detail-section"><h4>System Info</h4><div class="detail-grid">
-                <div class="detail-item"><div class="detail-key">OS</div><div class="detail-val">${esc(si.os)} ${esc(si.os_version)}</div></div>
+                <div class="detail-item"><div class="detail-key">Platform</div><div class="detail-val">${esc(platformText)}</div></div>
+                <div class="detail-item"><div class="detail-key">OS</div><div class="detail-val">${esc(si.os)}</div></div>
+                <div class="detail-item"><div class="detail-key">Kernel</div><div class="detail-val">${esc(si.os_version)}</div></div>
                 <div class="detail-item"><div class="detail-key">CPU</div><div class="detail-val">${esc(si.cpu_model)}</div></div>
                 <div class="detail-item"><div class="detail-key">Cores</div><div class="detail-val">${si.cpu_count}</div></div>
                 <div class="detail-item"><div class="detail-key">RAM</div><div class="detail-val">${si.ram_total_gb} GB</div></div>

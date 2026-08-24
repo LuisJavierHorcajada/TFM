@@ -28,6 +28,43 @@ logger = logging.getLogger("esi_bench.runner")
 _active_runs: dict[str, BenchmarkResultDoc] = {}
 
 
+def _get_os_info() -> tuple[str, str]:
+    """
+    Get human-readable OS distribution name (e.g. 'Ubuntu 24.04.4 LTS') and kernel version.
+    Checks /host/etc/os-release (host-mounted in container), /etc/os-release, and platform module.
+    """
+    import os
+    os_name = platform.system()
+    kernel_version = platform.release()
+    pretty_os = None
+
+    for path in ["/host/etc/os-release", "/etc/os-release", "/usr/lib/os-release"]:
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("PRETTY_NAME="):
+                            pretty_os = line.split("=", 1)[1].strip('"\'')
+                            break
+                        elif line.startswith("NAME=") and not pretty_os:
+                            pretty_os = line.split("=", 1)[1].strip('"\'')
+                if pretty_os:
+                    break
+        except Exception:
+            pass
+
+    if not pretty_os and hasattr(platform, "freedesktop_os_release"):
+        try:
+            rel = platform.freedesktop_os_release()
+            pretty_os = rel.get("PRETTY_NAME") or rel.get("NAME")
+        except Exception:
+            pass
+
+    display_os = pretty_os if pretty_os else os_name
+    return display_os, kernel_version
+
+
 def _collect_system_info() -> SystemInfo:
     """Gather platform metadata."""
     mem = psutil.virtual_memory()
@@ -43,13 +80,16 @@ def _collect_system_info() -> SystemInfo:
     except (FileNotFoundError, PermissionError):
         pass
 
+    # Detect OS distribution and kernel release
+    display_os, kernel_version = _get_os_info()
+
     # Detect cloud platform
     platform_info = detect_platform()
 
     return SystemInfo(
         hostname=platform.node(),
-        os=platform.system(),
-        os_version=platform.release(),
+        os=display_os,
+        os_version=kernel_version,
         cpu_model=cpu_model,
         cpu_count=psutil.cpu_count(logical=True) or 1,
         ram_total_gb=round(mem.total / (1024**3), 2),
