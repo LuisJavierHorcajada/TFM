@@ -2,10 +2,21 @@
 ESI-Bench - Pydantic schemas for requests, responses and database results.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+class PlatformInfo(BaseModel):
+    """Information about cloud provider / virtualization environment."""
+
+    provider: str = "unknown"  # "aws", "azure", "openstack", "unknown", etc.
+    instance_type: str | None = None  # e.g. "t2.micro", "Standard_B1s", "m1.small"
+    region: str | None = None  # e.g. "us-east-1", "westeurope"
+    instance_id: str | None = None
+    details: dict[str, Any] | None = None
+
 
 class RunRequest(BaseModel):
     """Request to start a benchmark run."""
@@ -50,6 +61,7 @@ class SystemInfo(BaseModel):
     ram_total_gb: float
     ram_available_gb: float
     python_version: str
+    platform: PlatformInfo | None = None
 
 
 class BenchmarkSummary(BaseModel):
@@ -65,7 +77,7 @@ class BenchmarkResultDoc(BaseModel):
     """Full benchmark result document stored in MongoDB."""
 
     run_id: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: Literal["pending", "running", "completed", "failed"] = "pending"
     system_info: SystemInfo | None = None
     benchmarks_requested: list[str] = []

@@ -2,9 +2,13 @@
 ESI-Bench - MongoDB connection manager.
 """
 
+import logging
+
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from app.config import settings
+
+logger = logging.getLogger("esi_bench.database")
 
 
 class Database:
@@ -19,12 +23,12 @@ class Database:
 
         # Verify connection
         await self.client.admin.command("ping")
-        print(f"Connected to MongoDB at {settings.MONGO_URL}/{settings.MONGO_DB}")
+        logger.info("Connected to MongoDB at %s/%s", settings.MONGO_URL, settings.MONGO_DB)
 
     async def disconnect(self) -> None:
         if self.client:
             self.client.close()
-            print("Disconnected from MongoDB")
+            logger.info("Disconnected from MongoDB")
 
     def get_collection(self, name: str):
         """Get a collection by name."""

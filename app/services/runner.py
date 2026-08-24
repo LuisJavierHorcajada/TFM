@@ -8,6 +8,7 @@ Manages the full lifecycle of a benchmark run:
     4. Save the results to MongoDB.
 """
 
+import logging
 import platform
 import time
 import traceback
@@ -18,7 +19,10 @@ import psutil
 
 from app.database import database
 from app.models.schemas import BenchmarkResultDoc, RunRequest, SystemInfo
+from app.services.platform_detector import detect_platform
 from app.services.registry import registry
+
+logger = logging.getLogger("esi_bench.runner")
 
 # Current active runs
 _active_runs: dict[str, BenchmarkResultDoc] = {}
@@ -39,6 +43,9 @@ def _collect_system_info() -> SystemInfo:
     except (FileNotFoundError, PermissionError):
         pass
 
+    # Detect cloud platform
+    platform_info = detect_platform()
+
     return SystemInfo(
         hostname=platform.node(),
         os=platform.system(),
@@ -48,6 +55,7 @@ def _collect_system_info() -> SystemInfo:
         ram_total_gb=round(mem.total / (1024**3), 2),
         ram_available_gb=round(mem.available / (1024**3), 2),
         python_version=platform.python_version(),
+        platform=platform_info,
     )
 
 
@@ -128,6 +136,7 @@ async def execute_run(run_id: str, params: dict | None = None) -> None:
             result = await benchmark.run(params)
             doc.results[benchmark_name] = result
         except Exception as e:
+            logger.exception("Benchmark '%s' failed in run %s: %s", benchmark_name, run_id, e)
             doc.results[benchmark_name] = {
                 "error": str(e),
                 "traceback": traceback.format_exc(),

@@ -12,22 +12,27 @@ import asyncio
 import concurrent.futures
 import math
 import os
+import random
 import time
 import zlib
 
 from app.services.base import Benchmark, BenchmarkInfo
 
 # --- Benchmark Configuration ---
-PRIME_LIMIT = 1000000000
-MATRIX_SIZE = 600
-COMPRESSION_MB = 256
+PRIME_LIMIT = 100_000_000  # 100M (uses ~100MB RAM, safe for 1GB VMs)
+MATRIX_SIZE = 350          # 350x350 pure Python floating point multiplication
+COMPRESSION_MB = 64        # 64MB zlib compression
 COMPRESSION_LEVEL = 6
+
+# Baseline reference times (in seconds) for score normalization (1000 = baseline)
+REF_PRIME_TIME = 5.0
+REF_MATRIX_TIME = 4.0
+REF_COMPRESSION_TIME = 2.0
 # -------------------------------
 
 
-
 def _sieve_of_eratosthenes(limit: int) -> int:
-    """Count primes up to a `limit` using Sieve of Eratosthenes algorithm."""
+    """Count primes up to `limit` using Sieve of Eratosthenes."""
     if limit < 2:
         return 0
     sieve = bytearray([1]) * (limit + 1)
@@ -40,40 +45,26 @@ def _sieve_of_eratosthenes(limit: int) -> int:
 
 
 def _matrix_multiply(size: int) -> float:
-    """NxN matrix multiplication. Returns time in seconds."""
-    import random
-
+    """NxN matrix multiplication. Returns execution time in seconds."""
     random.seed(42)
-    A = []
-    for i in range(size):
-        row = []
-        for j in range(size):
-            row.append(random.random())
-        A.append(row)
-
-    B = []
-    for i in range(size):
-        row = []
-        for j in range(size):
-            row.append(random.random())
-        B.append(row)
+    A = [[random.random() for _ in range(size)] for _ in range(size)]
+    B = [[random.random() for _ in range(size)] for _ in range(size)]
 
     start = time.perf_counter()
 
-    C = []
-    for i in range(size):
-        C.append([0.0] * size)
+    C = [[0.0] * size for _ in range(size)]
     for i in range(size):
         for j in range(size):
             s = 0.0
             for k in range(size):
                 s += A[i][k] * B[k][j]
             C[i][j] = s
+
     return time.perf_counter() - start
 
 
 def _compression_benchmark(data_size_mb: int) -> float:
-    """Compress a buffer with zlib. Returns time in seconds."""
+    """Compress a buffer with zlib. Returns execution time in seconds."""
     data = os.urandom(data_size_mb * 1024 * 1024)
     start = time.perf_counter()
     zlib.compress(data, level=COMPRESSION_LEVEL)
@@ -81,12 +72,12 @@ def _compression_benchmark(data_size_mb: int) -> float:
 
 
 def _worker_prime(limit: int) -> int:
-    """Worker for multi-core test."""
+    """Worker function for multi-core prime sieve."""
     return _sieve_of_eratosthenes(limit)
 
 
 class CPUBenchmark(Benchmark):
-    """CPU benchmark."""
+    """CPU integer, floating-point, compression, and multi-core benchmark."""
 
     @property
     def info(self) -> BenchmarkInfo:
@@ -124,16 +115,24 @@ class CPUBenchmark(Benchmark):
         cpu_count = os.cpu_count() or 1
         t0 = time.perf_counter()
         with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_count) as executor:
-            futures = []
-            for i in range(cpu_count):
-                futures.append(executor.submit(_worker_prime, prime_limit))
+            futures = [executor.submit(_worker_prime, prime_limit) for _ in range(cpu_count)]
             concurrent.futures.wait(futures)
         multi_core_time = time.perf_counter() - t0
 
-        # Compute scores (higher is better) --> Need to find a better way to assign scores that take into account the results of other benchmarks.
-        single_core_score = round(prime_limit / max(prime_time, 0.001) / 10000, 2)
+        # Reference-normalized scoring (1000 = baseline, higher is better)
+        single_core_score = round(
+            (
+                (REF_PRIME_TIME / max(prime_time, 0.001)) * 0.5
+                + (REF_MATRIX_TIME / max(matrix_time, 0.001)) * 0.3
+                + (REF_COMPRESSION_TIME / max(compression_time, 0.001)) * 0.2
+            )
+            * 1000,
+            2,
+        )
+
         multi_core_score = round(
-            (prime_limit * cpu_count) / max(multi_core_time, 0.001) / 10000, 2
+            ((REF_PRIME_TIME * cpu_count) / max(multi_core_time, 0.001)) * 1000,
+            2,
         )
 
         return {

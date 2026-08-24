@@ -1,35 +1,30 @@
 services:
   benchmark-app:
-    build: .
+    build:
+      context: .
+    image: tfm-benchmark-app:latest
     container_name: benchmark-app
-    ports:
-      - "8000:8000"
+    network_mode: host
     environment:
-      - MONGO_URL=mongodb://mongo:27017
+      # Al usar red host, se conecta a Mongo a través de localhost
+      - MONGO_URL=mongodb://127.0.0.1:27017
       - MONGO_DB=benchmarks
       - BENCHMARK_DISK_PATH=/tmp/benchmark
     depends_on:
-      mongo:
-        condition: service_started
+      - mongo
     volumes:
       - benchmark-tmp:/tmp/benchmark
-    networks:
-      - benchmark-net
+    privileged: true
     restart: unless-stopped
 
   mongo:
     image: mongo:7
     container_name: benchmark-mongo
+    network_mode: host
     volumes:
       - mongo-data:/data/db
-    networks:
-      - benchmark-net
     restart: unless-stopped
 
 volumes:
   mongo-data:
   benchmark-tmp:
-
-networks:
-  benchmark-net:
-    driver: bridge

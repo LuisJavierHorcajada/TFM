@@ -2,9 +2,9 @@
 Memory Benchmark Plugin.
 
 Tests:
-  - Sequential write bandwidth
-  - Random access latency
-  - Allocation stress
+  - Sequential write bandwidth (MB/s)
+  - Random access latency (nanoseconds)
+  - Allocation throughput / stress
   - System memory info
 """
 
@@ -18,10 +18,15 @@ from app.services.base import Benchmark, BenchmarkInfo
 
 # --- Benchmark Configuration ---
 SIZE_MB = 128
-NUM_ELEMENTS = 2000000
-NUM_READS = 500000
-ALLOC_ITERATIONS = 100000
+NUM_ELEMENTS = 2_000_000
+NUM_READS = 500_000
+ALLOC_ITERATIONS = 100_000
 ALLOC_BLOCK_SIZE = 1024
+
+# Baseline references for normalization (1000 = baseline)
+REF_BANDWIDTH_MB_S = 5000.0
+REF_LATENCY_NS = 100.0
+REF_ALLOC_TIME_S = 0.05
 # -------------------------------
 
 
@@ -46,9 +51,7 @@ def _random_access_latency(num_elements: int, num_reads: int) -> float:
     """Random reads from a large list. Returns average latency in nanoseconds."""
     data = list(range(num_elements))
     random.seed(42)
-    indices = []
-    for i in range(num_reads):
-        indices.append(random.randint(0, num_elements - 1))
+    indices = [random.randint(0, num_elements - 1) for _ in range(num_reads)]
 
     start = time.perf_counter()
     total = 0
@@ -63,7 +66,7 @@ def _random_access_latency(num_elements: int, num_reads: int) -> float:
 def _allocation_stress(iterations: int) -> float:
     """Rapidly allocate and free memory blocks. Returns elapsed seconds."""
     start = time.perf_counter()
-    for i in range(iterations):
+    for _ in range(iterations):
         block = bytearray(ALLOC_BLOCK_SIZE)
         del block
     elapsed = time.perf_counter() - start
@@ -107,6 +110,17 @@ class MemoryBenchmark(Benchmark):
         # 4. System memory info
         mem = psutil.virtual_memory()
 
+        # Compute normalized score
+        memory_score = round(
+            (
+                (bandwidth / REF_BANDWIDTH_MB_S) * 0.5
+                + (REF_LATENCY_NS / max(latency, 1.0)) * 0.3
+                + (REF_ALLOC_TIME_S / max(alloc_time, 0.001)) * 0.2
+            )
+            * 1000,
+            2,
+        )
+
         return {
             "sequential_bandwidth": {
                 "size_mb": size_mb,
@@ -125,5 +139,8 @@ class MemoryBenchmark(Benchmark):
                 "total_gb": round(mem.total / (1024**3), 2),
                 "available_gb": round(mem.available / (1024**3), 2),
                 "used_percent": mem.percent,
+            },
+            "scores": {
+                "memory_score": memory_score,
             },
         }

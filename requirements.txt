@@ -3,4 +3,3 @@ uvicorn[standard]>=0.30
 motor>=3.5
 pydantic-settings>=2.0
 psutil>=6.0
-speedtest-cli>=2.1

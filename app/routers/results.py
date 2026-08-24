@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 
 from app.database import database
+from app.services.registry import registry
 
 router = APIRouter()
 
@@ -23,8 +24,15 @@ async def list_results(
     if status:
         query_filter["status"] = status
     if category:
-        # Filter runs that include a specific benchmark category --> Doesn't do anything right now.
-        query_filter[f"results.{category}"] = {"$exists": True}
+        # Match benchmark names belonging to this category from registry
+        matched_benchmarks = [
+            name for name, bm in registry.benchmarks.items()
+            if getattr(bm.info, "category", None) == category or name.startswith(category)
+        ]
+        if matched_benchmarks:
+            query_filter["$or"] = [{f"results.{name}": {"$exists": True}} for name in matched_benchmarks]
+        else:
+            query_filter[f"results.{category}_benchmark"] = {"$exists": True}
 
     # Count total
     total = await collection.count_documents(query_filter)
@@ -47,9 +55,10 @@ async def list_results(
     }
 
 
+@router.get("/compare")
 @router.post("/compare")
 async def compare_results(run_id_a: str, run_id_b: str):
-    """Compare two benchmark runs"""
+    """Compare two benchmark runs."""
     collection = database.get_collection("results")
 
     result_a = await collection.find_one({"run_id": run_id_a}, {"_id": 0})

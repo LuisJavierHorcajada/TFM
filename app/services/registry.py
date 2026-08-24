@@ -7,10 +7,13 @@ finds all Benchmark subclasses, and registers them by name.
 
 import importlib
 import inspect
+import logging
 import pkgutil
 from pathlib import Path
 
 from app.services.base import Benchmark
+
+logger = logging.getLogger("esi_bench.registry")
 
 
 class BenchmarkRegistry:
@@ -25,7 +28,7 @@ class BenchmarkRegistry:
         benchmarks_dir = Path(__file__).parent.parent / "benchmarks"
 
         if not benchmarks_dir.exists():
-            print(f"Warning: Benchmarks directory not found: {benchmarks_dir}")
+            logger.warning("Benchmarks directory not found: %s", benchmarks_dir)
             return
 
         for importer, module_name, is_pkg in pkgutil.iter_modules([str(benchmarks_dir)]):
@@ -36,7 +39,7 @@ class BenchmarkRegistry:
             try:
                 module = importlib.import_module(full_module_name)
             except Exception as e:
-                print(f"Warning: Failed to import {full_module_name}: {e}")
+                logger.warning("Failed to import %s: %s", full_module_name, e)
                 continue
 
             # Find all Benchmark subclasses in the module
@@ -50,15 +53,16 @@ class BenchmarkRegistry:
                         instance = obj()
                         info = instance.info
                         if info.name in self.benchmarks:
-                            print(
-                                f"Warning: Duplicate benchmark name '{info.name}' "
-                                f"from {full_module_name}, skipping"
+                            logger.warning(
+                                "Duplicate benchmark name '%s' from %s, skipping",
+                                info.name,
+                                full_module_name,
                             )
                             continue
                         self.benchmarks[info.name] = instance
-                        print(f"Registered: {info.display_name} ({info.category})")
+                        logger.info("Registered: %s (%s)", info.display_name, info.category)
                     except Exception as e:
-                        print(f"Warning: Failed to register {name} from {full_module_name}: {e}")
+                        logger.warning("Failed to register %s from %s: %s", name, full_module_name, e)
 
     def list_benchmarks(self) -> list[dict]:
         """Return info for all registered benchmarks."""

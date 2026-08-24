@@ -2,6 +2,7 @@
 ESI-Bench - FastAPI deployment.
 """
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,14 +14,20 @@ from app.database import database
 from app.routers import benchmarks, results
 from app.services.registry import registry
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("esi_bench.main")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await database.connect()
     registry.discover()
-    print(f"Discovered {len(registry.benchmarks)} benchmark(s)")
+    logger.info("Discovered %d benchmark(s)", len(registry.benchmarks))
     yield
-    
+
     await database.disconnect()
 
 

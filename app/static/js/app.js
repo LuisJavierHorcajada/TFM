@@ -158,7 +158,13 @@
     }
     function renderSystemInfo(info) {
         const cleanRelease = (info.os_version || '').replace(info.hostname, '').trim();
-        document.getElementById('sys-platform').textContent = `${info.os} ${cleanRelease}`;
+        let platformText = `${info.os} ${cleanRelease}`;
+        if (info.platform && info.platform.provider && info.platform.provider !== 'unknown') {
+            const prov = info.platform.provider.toUpperCase();
+            const inst = info.platform.instance_type ? ` (${info.platform.instance_type})` : '';
+            platformText = `${prov}${inst}`;
+        }
+        document.getElementById('sys-platform').textContent = platformText;
         document.getElementById('sys-cpu').textContent = info.cpu_model || '—';
         document.getElementById('sys-cores').textContent = info.cpu_count;
         document.getElementById('sys-ram').textContent = `${info.ram_total_gb} GB`;
@@ -171,7 +177,12 @@
             'cpu_benchmark': { 'scores.single_core': 'Single-Core Score', 'scores.multi_core': 'Multi-Core Score' },
             'memory_benchmark': { 'sequential_bandwidth.bandwidth_mb_s': 'Bandwidth MB/s', 'random_access.latency_ns': 'Latency (ns)' },
             'disk_benchmark': { 'sequential_read.speed_mb_s': 'Seq Read MB/s', 'sequential_write.speed_mb_s': 'Seq Write MB/s' },
-            'network_benchmark': { 'ping.avg_ms': 'Ping (ms)', 'speedtest.download_mbps': 'Download Mbps' }
+            'network_benchmark': {
+                'ping.avg_ms': 'Ping (ms)',
+                'ping.jitter_ms': 'Jitter (ms)',
+                'ping.packet_loss_percent': 'Packet Loss %',
+                'speedtest.download_mbps': 'Download Mbps'
+            }
         };
         let html = '';
         for (const [bmName, bmResult] of Object.entries(results)) {
@@ -328,7 +339,7 @@
         if (!a || !b) { toast('Select two runs to compare', 'error'); return; }
         if (a === b) { toast('Select two different runs', 'error'); return; }
         try {
-            const data = await api(`/results/compare?run_id_a=${a}&run_id_b=${b}`, { method: 'POST' });
+            const data = await api(`/results/compare?run_id_a=${a}&run_id_b=${b}`);
             renderCompare(data);
         } catch (e) { toast('Compare failed: ' + e.message, 'error'); }
     });
@@ -405,13 +416,14 @@
         s = s.replace(/\bmbps\b/gi, 'Mbps');
         s = s.replace(/\bgb\b/gi, 'GB');
         s = s.replace(/\bms\b/gi, 'ms');
+        s = s.replace(/\bpercent\b/gi, '%');
         if (s.toLowerCase().endsWith(' s') && !s.toLowerCase().endsWith('mb s')) {
             s = s.replace(/ s$/i, ' In Seconds');
         }
         s = s.replace(/ benchmark/gi, '');
         return s.split(' ').map(w => {
             const low = w.toLowerCase();
-            if (['in', 'ms', 'mb/s', 'mbps', 'gb'].includes(low)) return w;
+            if (['in', 'ms', 'mb/s', 'mbps', 'gb', '%'].includes(low)) return w;
             return w.charAt(0).toUpperCase() + w.slice(1);
         }).join(' ');
     }
@@ -422,16 +434,26 @@
     }
     function formatVal(v) {
         if (v === undefined || v === null) return '—';
-        const num = parseFloat(v);
-        if (!isNaN(num) && isFinite(num) && typeof v !== 'boolean' && String(v).trim() !== '') {
+        if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+        if (typeof v === 'number') {
             return new Intl.NumberFormat('en-US', {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 4,
                 useGrouping: true
-            }).format(num);
+            }).format(v);
         }
-        if (typeof v === 'boolean') return v ? 'Yes' : 'No';
-        return esc(String(v));
+        const s = String(v).trim();
+        if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(s)) {
+            const num = parseFloat(s);
+            if (!isNaN(num) && isFinite(num)) {
+                return new Intl.NumberFormat('en-US', {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 4,
+                    useGrouping: true
+                }).format(num);
+            }
+        }
+        return esc(s);
     }
     function flattenObj(obj, prefix = '', out = {}) {
         for (const [k, v] of Object.entries(obj)) {
