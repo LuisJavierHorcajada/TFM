@@ -32,6 +32,54 @@ ALIGNMENT = 4096
 O_DIRECT = getattr(os, "O_DIRECT", 0)
 
 
+def _detect_filesystem(path: str) -> dict:
+    """Inspect /proc/mounts to identify the underlying filesystem and persistence."""
+    real_path = os.path.realpath(os.path.abspath(path))
+    check_path = real_path
+    while not os.path.exists(check_path) and check_path != "/":
+        check_path = os.path.dirname(check_path)
+
+    mount_point = "/"
+    device = "unknown"
+    fs_type = "unknown"
+
+    try:
+        if os.path.exists("/proc/mounts"):
+            with open("/proc/mounts", "r") as f:
+                best_len = -1
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        dev, mnt, fst = parts[0], parts[1], parts[2]
+                        if check_path == mnt or check_path.startswith(mnt.rstrip("/") + "/"):
+                            if len(mnt) > best_len:
+                                best_len = len(mnt)
+                                device, mount_point, fs_type = dev, mnt, fst
+    except Exception:
+        pass
+
+    non_persistent_types = ("tmpfs", "ramfs", "overlay", "overlayfs", "shm", "devtmpfs")
+    is_persistent = fs_type not in non_persistent_types and fs_type != "unknown"
+
+    if not is_persistent:
+        logger.warning(
+            "Disk benchmark directory '%s' is on '%s' (non-persistent/container overlay). "
+            "Mount a persistent volume (e.g. named volume or host directory) for accurate results.",
+            real_path,
+            fs_type,
+        )
+    else:
+        logger.info("Disk benchmark target: %s on device %s (%s)", real_path, device, fs_type)
+
+    return {
+        "path": real_path,
+        "filesystem": fs_type,
+        "mount_point": mount_point,
+        "device": device,
+        "is_persistent": is_persistent,
+    }
+
+
 def _create_direct_buffer(size: int, fill: bytes | None = None) -> mmap.mmap:
     """Create a page-aligned memory buffer suitable for O_DIRECT."""
     buf = mmap.mmap(-1, size)
@@ -264,10 +312,11 @@ class DiskBenchmark(Benchmark):
         size_mb = p.get("size_mb", SIZE_MB)
         random_ops = p.get("random_ops", RANDOM_OPS)
 
-        # 1. Setup - Create temp file path
+        # 1. Setup - Create temp file path and inspect filesystem persistence
         bench_dir = Path(settings.BENCHMARK_DISK_PATH)
         bench_dir.mkdir(parents=True, exist_ok=True)
         test_file = str(bench_dir / "benchmark_test.bin")
+        fs_info = _detect_filesystem(str(bench_dir))
 
         try:
             loop = asyncio.get_event_loop()
@@ -306,6 +355,12 @@ class DiskBenchmark(Benchmark):
             )
 
             return {
+                "storage_info": {
+                    "filesystem": fs_info["filesystem"],
+                    "mount_point": fs_info["mount_point"],
+                    "device": fs_info["device"],
+                    "is_persistent": fs_info["is_persistent"],
+                },
                 "sequential_write": {
                     "size_mb": size_mb,
                     "speed_mb_s": seq_write,

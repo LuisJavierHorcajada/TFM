@@ -112,12 +112,24 @@ def _check_azure() -> PlatformInfo | None:
 
 def _check_aws() -> PlatformInfo | None:
     """
-    Check genuine AWS IMDS.
-    Verifies AWS-specific dynamic identity document or IMDSv2 to avoid
-    misidentifying OpenStack's EC2 emulation layer as AWS.
+    Check genuine AWS IMDS (supports both IMDSv2 and IMDSv1).
+    Requests IMDSv2 session token first, then queries the AWS dynamic
+    instance identity document and metadata.
     """
-    # 1. AWS dynamic instance identity document (only exists on authentic AWS)
-    identity_doc = _fetch_url("http://169.254.169.254/latest/dynamic/instance-identity/document")
+    # 1. Request IMDSv2 session token (TTL: 60s)
+    token_headers = {"X-aws-ec2-metadata-token-ttl-seconds": "60"}
+    token = _fetch_url(
+        "http://169.254.169.254/latest/api/token",
+        headers=token_headers,
+        method="PUT",
+    )
+    headers = {"X-aws-ec2-metadata-token": token} if token else {}
+
+    # 2. Try AWS dynamic instance identity document (only exists on authentic AWS)
+    identity_doc = _fetch_url(
+        "http://169.254.169.254/latest/dynamic/instance-identity/document",
+        headers=headers,
+    )
     if identity_doc:
         try:
             data = json.loads(identity_doc)
@@ -131,30 +143,26 @@ def _check_aws() -> PlatformInfo | None:
                         "availability_zone": data.get("availabilityZone"),
                         "account_id": data.get("accountId"),
                         "architecture": data.get("architecture"),
+                        "imds_version": "v2" if token else "v1",
                     },
                 )
         except Exception:
             pass
 
-    # 2. Try IMDSv2 token
-    token_headers = {"X-aws-ec2-metadata-token-ttl-seconds": "60"}
-    token = _fetch_url(
-        "http://169.254.169.254/latest/api/token",
-        headers=token_headers,
-        method="PUT",
-    )
-    headers = {"X-aws-ec2-metadata-token": token} if token else {}
-
-    # Check instance-type
+    # 3. Fallback: Query metadata endpoints directly with headers
     instance_type = _fetch_url(
         "http://169.254.169.254/latest/meta-data/instance-type", headers=headers
     )
     if not instance_type:
         return None
 
-    # Check DMI to verify we are not in OpenStack / QEMU / KVM
+    # Check DMI to verify we are not in OpenStack / QEMU / KVM emulating EC2 metadata
     vendor = ""
-    for path in ["/sys/class/dmi/id/sys_vendor", "/sys/class/dmi/id/board_vendor", "/sys/class/dmi/id/product_name"]:
+    for path in [
+        "/sys/class/dmi/id/sys_vendor",
+        "/sys/class/dmi/id/board_vendor",
+        "/sys/class/dmi/id/product_name",
+    ]:
         try:
             if os.path.exists(path):
                 with open(path, "r", errors="ignore") as f:
@@ -178,7 +186,10 @@ def _check_aws() -> PlatformInfo | None:
         instance_type=instance_type.strip(),
         region=region.strip() if region else None,
         instance_id=instance_id.strip() if instance_id else None,
-        details={"availability_zone": az.strip() if az else None},
+        details={
+            "availability_zone": az.strip() if az else None,
+            "imds_version": "v2" if token else "v1",
+        },
     )
 
 
@@ -231,11 +242,26 @@ def _check_dmi_and_env() -> PlatformInfo:
 def detect_platform() -> PlatformInfo:
     """
     Run detection strategies in priority order:
-    1. OpenStack IMDS (native openstack/ metadata check prevents false positives from EC2 emulation)
-    2. Azure IMDS
-    3. AWS IMDS (verifies authentic AWS identity document)
-    4. DMI / Environment fallback
+    1. Explicit Environment Override (Instant, ideal for FIWARE and local testing)
+    2. OpenStack IMDS (native openstack/ metadata check)
+    3. Azure IMDS
+    4. AWS IMDS (IMDSv2 + identity document)
+    5. DMI Hardware fallback
     """
+    # 1. Comprobación prioritaria por variable de entorno
+    env_provider = os.getenv("PLATFORM_PROVIDER") or os.getenv("PLATFORM_NAME")
+    if env_provider:
+        env_instance = os.getenv("PLATFORM_INSTANCE_TYPE") or os.getenv("INSTANCE_TYPE", "custom")
+        env_region = os.getenv("PLATFORM_REGION") or os.getenv("REGION", "local")
+        logger.info("Detected platform (env override): %s", env_provider.lower())
+        return PlatformInfo(
+            provider=env_provider.lower(),
+            instance_type=env_instance,
+            region=env_region,
+            details={"source": "environment_variables"},
+        )
+
+    # 2. Detección OpenStack
     try:
         os_info = _check_openstack()
         if os_info:
@@ -244,6 +270,7 @@ def detect_platform() -> PlatformInfo:
     except Exception as e:
         logger.debug("OpenStack detection error: %s", e)
 
+    # 3. Detección Azure
     try:
         azure_info = _check_azure()
         if azure_info:
@@ -252,6 +279,7 @@ def detect_platform() -> PlatformInfo:
     except Exception as e:
         logger.debug("Azure detection error: %s", e)
 
+    # 4. Detección AWS
     try:
         aws_info = _check_aws()
         if aws_info:
@@ -260,6 +288,7 @@ def detect_platform() -> PlatformInfo:
     except Exception as e:
         logger.debug("AWS detection error: %s", e)
 
+    # 5. DMI Hardware / Sys fallback
     fallback = _check_dmi_and_env()
     logger.info("Detected platform (fallback): %s", fallback.provider)
     return fallback

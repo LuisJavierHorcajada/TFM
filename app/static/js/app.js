@@ -152,6 +152,20 @@
             const result = await api(`/results/${runId}`);
             renderResultOverview(result);
             if (result.system_info) renderSystemInfo(result.system_info);
+            const exportActions = document.getElementById('latest-export-actions');
+            if (exportActions) {
+                exportActions.style.display = 'flex';
+                const btnJson = document.getElementById('btn-export-latest-json');
+                const btnCsv = document.getElementById('btn-export-latest-csv');
+                if (btnJson) {
+                    btnJson.href = `/api/results/${result.run_id}/export?format=json`;
+                    btnJson.download = `benchmark_${result.run_id.slice(0, 8)}.json`;
+                }
+                if (btnCsv) {
+                    btnCsv.href = `/api/results/${result.run_id}/export?format=csv`;
+                    btnCsv.download = `benchmark_${result.run_id.slice(0, 8)}.csv`;
+                }
+            }
         } catch (e) {
             toast('Failed to load results', 'error');
         }
@@ -240,6 +254,8 @@
                     <span class="history-duration">${r.duration_s ? r.duration_s.toFixed(1) + 's' : '—'}</span>
                     <span class="badge badge-${r.status === 'completed' ? 'success' : 'failed'}">${r.status}</span>
                     <button class="btn btn-ghost btn-sm btn-view" data-run-id="${r.run_id}">View</button>
+                    <a href="/api/results/${r.run_id}/export?format=json" download="benchmark_${r.run_id.slice(0, 8)}.json" class="btn btn-ghost btn-sm" title="Export as JSON">JSON</a>
+                    <a href="/api/results/${r.run_id}/export?format=csv" download="benchmark_${r.run_id.slice(0, 8)}.csv" class="btn btn-ghost btn-sm" title="Export as CSV">CSV</a>
                     <button class="btn btn-danger btn-sm btn-delete" data-run-id="${r.run_id}">✕</button>
                 </div>
             </div>
@@ -306,10 +322,17 @@
                 <div class="detail-item"><div class="detail-key">Python</div><div class="detail-val">${esc(si.python_version)}</div></div>
             </div></div>`;
         }
+        const shortId = result.run_id ? result.run_id.slice(0, 8) : 'run';
         overlay.innerHTML = `<div class="modal">
             <div class="modal-header">
-                <h3>Benchmark Result — ${new Date(result.timestamp).toLocaleString()}</h3>
-                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+                <div>
+                    <h3>Benchmark Result — ${new Date(result.timestamp).toLocaleString()}</h3>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <a href="/api/results/${result.run_id}/export?format=json" download="benchmark_${shortId}.json" class="btn btn-ghost btn-sm">Export JSON</a>
+                    <a href="/api/results/${result.run_id}/export?format=csv" download="benchmark_${shortId}.csv" class="btn btn-ghost btn-sm">Export CSV</a>
+                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+                </div>
             </div>
             ${sysHtml}
             ${sectionsHtml}

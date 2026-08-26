@@ -102,6 +102,10 @@
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
                         Latest Results
                     </h2>
+                    <div class="card-actions" id="latest-export-actions" style="display: none; gap: 0.5rem;">
+                        <a id="btn-export-latest-json" class="btn btn-ghost btn-sm" download>Export JSON</a>
+                        <a id="btn-export-latest-csv" class="btn btn-ghost btn-sm" download>Export CSV</a>
+                    </div>
                 </div>
                 <div class="results-overview" id="results-overview">
                     <p class="empty-state">No benchmark results yet. Run your first benchmark above!</p>
@@ -115,6 +119,10 @@
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         Benchmark History
                     </h2>
+                    <div class="card-actions" style="display: flex; gap: 0.5rem;">
+                        <a href="/api/results/export?format=json" download="benchmark_results.json" class="btn btn-ghost btn-sm">Export All JSON</a>
+                        <a href="/api/results/export?format=csv" download="benchmark_results.csv" class="btn btn-ghost btn-sm">Export All CSV</a>
+                    </div>
                 </div>
                 <div class="history-list" id="history-list">
                     <p class="empty-state">No benchmark runs found.</p>
