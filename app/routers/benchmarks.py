@@ -21,6 +21,14 @@ async def list_benchmarks():
     }
 
 
+@router.get("/system-info")
+async def system_info():
+    """Get live system information (Platform, Disk, CPU, Cores, RAM)."""
+    from app.services.runner import _collect_system_info
+    info = _collect_system_info()
+    return info.model_dump() if hasattr(info, "model_dump") else info.dict()
+
+
 
 
 @router.post("/run", response_model=RunResponse)

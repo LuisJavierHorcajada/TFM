@@ -15,8 +15,10 @@ import traceback
 import uuid
 from datetime import datetime, timezone
 
+import os
 import psutil
 
+from app.config import settings
 from app.database import database
 from app.models.schemas import BenchmarkResultDoc, RunRequest, SystemInfo
 from app.services.platform_detector import detect_platform
@@ -33,41 +35,65 @@ def _get_os_info() -> tuple[str, str]:
     Get human-readable OS distribution name (e.g. 'Ubuntu 24.04.4 LTS') and kernel version.
     Checks /host/etc/os-release (host-mounted in container), /etc/os-release, and platform module.
     """
-    import os
     os_name = platform.system()
     kernel_version = platform.release()
     pretty_os = None
 
-    for path in ["/host/etc/os-release", "/etc/os-release", "/usr/lib/os-release"]:
+    # 1. Try host /etc/os-release if mounted in container
+    for os_release_path in ["/host/etc/os-release", "/etc/os-release"]:
         try:
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            if os.path.exists(os_release_path):
+                with open(os_release_path, "r", encoding="utf-8", errors="ignore") as f:
                     for line in f:
                         line = line.strip()
                         if line.startswith("PRETTY_NAME="):
                             pretty_os = line.split("=", 1)[1].strip('"\'')
                             break
-                        elif line.startswith("NAME=") and not pretty_os:
+                        if line.startswith("NAME=") and not pretty_os:
                             pretty_os = line.split("=", 1)[1].strip('"\'')
                 if pretty_os:
                     break
         except Exception:
             pass
 
+    # 2. Try platform.freedesktop_os_release (Python 3.10+)
     if not pretty_os and hasattr(platform, "freedesktop_os_release"):
         try:
-            rel = platform.freedesktop_os_release()
-            pretty_os = rel.get("PRETTY_NAME") or rel.get("NAME")
+            os_rel = platform.freedesktop_os_release()
+            pretty_os = os_rel.get("PRETTY_NAME") or os_rel.get("NAME")
         except Exception:
             pass
 
-    display_os = pretty_os if pretty_os else os_name
+    display_os = pretty_os if pretty_os else f"{os_name} {kernel_version}"
     return display_os, kernel_version
 
 
 def _collect_system_info() -> SystemInfo:
     """Gather platform metadata."""
     mem = psutil.virtual_memory()
+
+    # Collect disk space reliably across candidate paths
+    disk_total_gb = None
+    disk_available_gb = None
+    candidate_paths = [
+        getattr(settings, "BENCHMARK_DISK_PATH", "/tmp/benchmark"),
+        "/tmp/benchmark",
+        "/var/tmp",
+        "/tmp",
+        "/",
+        "/home",
+    ]
+    for p in candidate_paths:
+        try:
+            check_p = p if os.path.exists(p) else os.path.dirname(p)
+            if os.path.exists(check_p):
+                usage = psutil.disk_usage(check_p)
+                if usage.total > 0:
+                    disk_total_gb = round(usage.total / (1024**3), 2)
+                    disk_available_gb = round(usage.free / (1024**3), 2)
+                    break
+        except Exception:
+            continue
 
     # Try to get CPU model name
     cpu_model = platform.processor() or "Unknown"
@@ -94,6 +120,8 @@ def _collect_system_info() -> SystemInfo:
         cpu_count=psutil.cpu_count(logical=True) or 1,
         ram_total_gb=round(mem.total / (1024**3), 2),
         ram_available_gb=round(mem.available / (1024**3), 2),
+        disk_total_gb=disk_total_gb,
+        disk_available_gb=disk_available_gb,
         python_version=platform.python_version(),
         platform=platform_info,
     )

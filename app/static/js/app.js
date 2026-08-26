@@ -179,7 +179,17 @@
         }
         document.getElementById('sys-platform').textContent = platformText;
         const diskElem = document.getElementById('sys-disk');
-        if (diskElem) diskElem.textContent = info.disk_total_gb ? `${info.disk_total_gb} GB` : '—';
+        if (diskElem) {
+            if (info.disk_total_gb != null && info.disk_total_gb > 0) {
+                diskElem.textContent = `${info.disk_total_gb} GB`;
+            } else {
+                api('/benchmarks/system-info').then(liveInfo => {
+                    if (liveInfo && liveInfo.disk_total_gb != null && liveInfo.disk_total_gb > 0) {
+                        diskElem.textContent = `${liveInfo.disk_total_gb} GB`;
+                    }
+                }).catch(() => {});
+            }
+        }
         document.getElementById('sys-cpu').textContent = info.cpu_model || '—';
         document.getElementById('sys-cores').textContent = info.cpu_count;
         document.getElementById('sys-ram').textContent = `${info.ram_total_gb} GB`;
@@ -499,11 +509,16 @@
     loadBenchmarks();
     (async () => {
         try {
+            const sysInfo = await api('/benchmarks/system-info');
+            if (sysInfo) renderSystemInfo(sysInfo);
+        } catch (e) {}
+
+        try {
             const data = await api('/results?page=1&per_page=1&status=completed');
             if (data.results.length) {
                 const latest = data.results[0];
                 loadLatestResult(latest.run_id);
             }
-        } catch (e) {  }
+        } catch (e) {}
     })();
 })();
