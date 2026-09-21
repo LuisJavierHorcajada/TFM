@@ -67,6 +67,10 @@
                 const cb = item.querySelector('input[type="checkbox"]');
                 cb.checked = !cb.checked;
                 item.classList.toggle('selected', cb.checked);
+                if (cb.value === 'fiware_benchmark' && cb.checked) {
+                    const fiwareRadio = document.querySelector('input[name="run-profile"][value="fiware"]');
+                    if (fiwareRadio) fiwareRadio.checked = true;
+                }
             });
         });
     }
@@ -87,12 +91,20 @@
     document.getElementById('btn-run').addEventListener('click', async () => {
         const selected = [...document.querySelectorAll('.benchmark-item input:checked')].map(cb => cb.value);
         if (!selected.length) { toast('Select at least one benchmark', 'error'); return; }
+        const profile = document.querySelector('input[name="run-profile"]:checked')?.value || 'bare';
+        const orionUrl = document.getElementById('input-orion-url')?.value?.trim();
+        const params = orionUrl ? { orion_url: orionUrl } : {};
+
         const btn = document.getElementById('btn-run');
         btn.disabled = true;
         try {
             const data = await api('/benchmarks/run', {
                 method: 'POST',
-                body: JSON.stringify({ benchmarks: selected }),
+                body: JSON.stringify({
+                    benchmarks: selected,
+                    profile: profile,
+                    params: params,
+                }),
             });
             currentRunId = data.run_id;
             toast('Benchmark run started!', 'success');
@@ -207,6 +219,12 @@
                 'ping.jitter_ms': 'Jitter (ms)',
                 'ping.packet_loss_percent': 'Packet Loss %',
                 'speedtest.download_mbps': 'Download Mbps'
+            },
+            'fiware_benchmark': {
+                'batch_create.throughput_entities_per_s': 'Batch Throughput (ent/s)',
+                'entity_create.avg_ms': 'Create Latency (ms)',
+                'entity_read.avg_ms': 'Read Latency (ms)',
+                'query.avg_ms': 'Query Latency (ms)'
             }
         };
         let html = '';
@@ -249,10 +267,15 @@
     function renderHistory(data) {
         const container = document.getElementById('history-list');
         if (!data.results.length) { container.innerHTML = '<p class="empty-state">No benchmark runs found.</p>'; return; }
-        container.innerHTML = data.results.map(r => `
+        container.innerHTML = data.results.map(r => {
+            const profile = r.profile || 'bare';
+            return `
             <div class="history-item" data-run-id="${r.run_id}">
                 <div class="history-left">
-                    <div class="history-time">${new Date(r.timestamp).toLocaleString()}</div>
+                    <div class="history-time" style="display:flex; align-items:center; gap:0.5rem;">
+                        <span>${new Date(r.timestamp).toLocaleString()}</span>
+                        <span class="badge badge-profile-${profile}">${profile.toUpperCase()}</span>
+                    </div>
                     <div class="history-benchmarks">
                         ${(r.benchmarks_requested || []).map(b => {
                             const cat = b.replace('_benchmark', '');
@@ -269,7 +292,8 @@
                     <button class="btn btn-danger btn-sm btn-delete" data-run-id="${r.run_id}">✕</button>
                 </div>
             </div>
-        `).join('');
+            `;
+        }).join('');
         container.querySelectorAll('.btn-view').forEach(btn => btn.addEventListener('click', () => showDetail(btn.dataset.runId)));
         container.querySelectorAll('.btn-delete').forEach(btn => btn.addEventListener('click', () => deleteResult(btn.dataset.runId)));
         renderPagination(data);
@@ -321,7 +345,9 @@
                 const inst = si.platform.instance_type ? ` (${si.platform.instance_type})` : '';
                 platformText = `${prov}${inst}`;
             }
+            const profile = result.profile || 'bare';
             sysHtml = `<div class="detail-section"><h4>System Info</h4><div class="detail-grid">
+                <div class="detail-item"><div class="detail-key">Profile</div><div class="detail-val"><span class="badge badge-profile-${profile}">${profile.toUpperCase()}</span></div></div>
                 <div class="detail-item"><div class="detail-key">Platform</div><div class="detail-val">${esc(platformText)}</div></div>
                 <div class="detail-item"><div class="detail-key">Disk Space</div><div class="detail-val">${si.disk_total_gb ? `${si.disk_total_gb} GB (${si.disk_available_gb || 0} GB free)` : '—'}</div></div>
                 <div class="detail-item"><div class="detail-key">OS</div><div class="detail-val">${esc(si.os)}</div></div>

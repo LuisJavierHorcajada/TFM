@@ -39,6 +39,7 @@ def _export_to_csv(docs: list[dict[str, Any]]) -> str:
 
     priority_order = [
         "run_id",
+        "profile",
         "timestamp",
         "status",
         "duration_s",
@@ -81,6 +82,7 @@ async def export_all_results(
     format: Literal["json", "csv"] = Query("json", description="Export format (json or csv)"),
     status: str | None = None,
     category: str | None = None,
+    profile: str | None = None,
 ):
     """Export multiple benchmark results as JSON or CSV."""
     collection = database.get_collection("results")
@@ -88,6 +90,8 @@ async def export_all_results(
     query_filter: dict = {}
     if status:
         query_filter["status"] = status
+    if profile:
+        query_filter["profile"] = profile
     if category:
         matched_benchmarks = [
             name
@@ -136,12 +140,15 @@ async def list_results(
     per_page: int = Query(20, ge=1, le=100),
     category: str | None = None,
     status: str | None = None,
+    profile: str | None = None,
 ):
     collection = database.get_collection("results")
 
     query_filter: dict = {}
     if status:
         query_filter["status"] = status
+    if profile:
+        query_filter["profile"] = profile
     if category:
         # Match benchmark names belonging to this category from registry
         matched_benchmarks = [

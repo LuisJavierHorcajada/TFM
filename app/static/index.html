@@ -69,6 +69,21 @@
                 </div>
                 <div class="benchmark-categories" id="benchmark-categories">
                 </div>
+                <div class="launcher-options" style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.25rem; padding: 0.75rem 1rem; background: rgba(99,102,241,0.05); border-radius: var(--radius-md); border: 1px solid var(--border);">
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="stat-label" style="margin-bottom: 0;">Profile:</span>
+                        <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; cursor: pointer;">
+                            <input type="radio" name="run-profile" value="bare" checked> Bare VM
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; cursor: pointer;">
+                            <input type="radio" name="run-profile" value="fiware"> FIWARE
+                        </label>
+                    </div>
+                    <div id="orion-url-group" style="display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 260px;">
+                        <span class="stat-label" style="margin-bottom: 0; white-space: nowrap;">Orion URL:</span>
+                        <input type="text" id="input-orion-url" placeholder="http://localhost:1026" style="flex: 1; padding: 0.4rem 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-family: inherit; font-size: 0.85rem;" />
+                    </div>
+                </div>
                 <div class="launcher-actions">
                     <button class="btn btn-ghost" id="btn-select-all">Select All</button>
                     <button class="btn btn-ghost" id="btn-deselect-all">Deselect All</button>
@@ -166,6 +181,6 @@
         </section>
     </main>
     <div class="toast-container" id="toast-container"></div>
-    <script src="/static/js/app.js?v=3"></script>
+    <script src="/static/js/app.js?v=5"></script>
 </body>
 </html>

@@ -1,0 +1,24 @@
+# Standalone FIWARE Orion Context Broker deployment
+# Use this on remote VMs (OpenStack, AWS, Azure) to benchmark Orion remotely
+services:
+  orion:
+    image: fiware/orion:3.12.0
+    container_name: fiware-orion
+    ports:
+      - "1026:1026"
+    depends_on:
+      - mongo-orion
+    command: -dbhost mongo-orion -db orion -logLevel WARN
+    restart: unless-stopped
+
+  mongo-orion:
+    image: mongo:6.0
+    container_name: fiware-mongo
+    command: --nojournal
+    volumes:
+      - orion-mongo-data:/data/db
+    restart: unless-stopped
+
+volumes:
+  orion-mongo-data:
+

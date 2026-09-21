@@ -48,4 +48,7 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 @app.get("/", include_in_schema=False)
 async def root():
-    return FileResponse(str(static_dir / "index.html"))
+    return FileResponse(
+        str(static_dir / "index.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )

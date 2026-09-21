@@ -8,6 +8,7 @@ Manages the full lifecycle of a benchmark run:
     4. Save the results to MongoDB.
 """
 
+import asyncio
 import logging
 import platform
 import time
@@ -143,8 +144,10 @@ async def start_run(request: RunRequest) -> str:
             if registry.get_benchmark(name):
                 benchmark_names.append(name)
 
+    profile = getattr(request, "profile", None) or getattr(settings, "RUN_PROFILE", "bare")
     doc = BenchmarkResultDoc(
         run_id=run_id,
+        profile=profile,
         timestamp=datetime.now(timezone.utc),
         status="pending",
         benchmarks_requested=benchmark_names,
@@ -240,6 +243,16 @@ async def execute_run(run_id: str, params: dict | None = None) -> None:
             }
         },
     )
+
+    # Optional FIWARE publishing if target Orion is configured
+    orion_target = (params.get("orion_url") if params else None) or getattr(settings, "ORION_URL", "")
+    if orion_target:
+        try:
+            from app.services.fiware import publish_benchmark_result
+            final_doc = doc.model_dump() if hasattr(doc, "model_dump") else doc.dict()
+            asyncio.create_task(publish_benchmark_result(orion_target, run_id, final_doc))
+        except Exception as e:
+            logger.warning("Could not initiate FIWARE publishing: %s", e)
 
     # Clean up in-memory tracker
     _active_runs.pop(run_id, None)

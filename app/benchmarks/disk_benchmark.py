@@ -342,18 +342,6 @@ class DiskBenchmark(Benchmark):
                 None, _random_read_iops, test_file, file_size, random_ops
             )
 
-            # Compute normalized score (1000 = baseline of 100MB/s r/w and 500 IOPS)
-            disk_score = round(
-                (
-                    (seq_read / 100.0) * 0.35
-                    + (seq_write / 100.0) * 0.35
-                    + (rand_read / 500.0) * 0.15
-                    + (rand_write / 500.0) * 0.15
-                )
-                * 1000,
-                2,
-            )
-
             return {
                 "storage_info": {
                     "filesystem": fs_info["filesystem"],
@@ -376,9 +364,6 @@ class DiskBenchmark(Benchmark):
                 "random_read": {
                     "ops": random_ops,
                     "iops": rand_read,
-                },
-                "scores": {
-                    "disk_score": disk_score,
                 },
             }
         finally:

@@ -26,6 +26,10 @@ class RunRequest(BaseModel):
         description='List of benchmark names to run, or ["all"] for everything.',
         examples=[["cpu_benchmark", "memory_benchmark"], ["all"]],
     )
+    profile: str = Field(
+        default="bare",
+        description='Profile tag for the run, e.g. "bare" or "fiware".',
+    )
     params: dict[str, Any] | None = Field(
         default=None,
         description="Optional parameters passed to each benchmark's run() method.",
@@ -79,6 +83,7 @@ class BenchmarkResultDoc(BaseModel):
     """Full benchmark result document stored in MongoDB."""
 
     run_id: str
+    profile: str = "bare"
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: Literal["pending", "running", "completed", "failed"] = "pending"
     system_info: SystemInfo | None = None

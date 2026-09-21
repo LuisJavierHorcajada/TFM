@@ -1,0 +1,17 @@
+# Overlay compose file for co-hosting Orion with ESI-Bench to measure overhead
+# Usage: docker compose -f docker-compose.yml -f docker-compose.fiware.yml up -d
+services:
+  benchmark-app:
+    environment:
+      - RUN_PROFILE=fiware
+      - ORION_URL=http://127.0.0.1:1026
+
+  orion:
+    image: fiware/orion:3.12.0
+    container_name: fiware-orion
+    network_mode: host
+    depends_on:
+      - mongo
+    command: -dbhost 127.0.0.1 -db orion -logLevel WARN
+    restart: unless-stopped
+

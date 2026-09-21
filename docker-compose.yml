@@ -2,6 +2,7 @@ services:
   benchmark-app:
     build:
       context: .
+      network: host
     image: tfm-benchmark-app:latest
     container_name: benchmark-app
     network_mode: host

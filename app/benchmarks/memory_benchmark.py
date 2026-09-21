@@ -23,12 +23,6 @@ NUM_READS = 500_000
 ALLOC_ITERATIONS = 100_000
 ALLOC_BLOCK_SIZE = 1024
 
-# Baseline references for normalization (1000 = baseline)
-REF_BANDWIDTH_MB_S = 5000.0
-REF_LATENCY_NS = 100.0
-REF_ALLOC_TIME_S = 0.05
-# -------------------------------
-
 
 def _sequential_bandwidth(size_mb: int) -> float:
     """Write sequentially to a bytearray. Returns MB/s."""
@@ -110,17 +104,6 @@ class MemoryBenchmark(Benchmark):
         # 4. System memory info
         mem = psutil.virtual_memory()
 
-        # Compute normalized score
-        memory_score = round(
-            (
-                (bandwidth / REF_BANDWIDTH_MB_S) * 0.5
-                + (REF_LATENCY_NS / max(latency, 1.0)) * 0.3
-                + (REF_ALLOC_TIME_S / max(alloc_time, 0.001)) * 0.2
-            )
-            * 1000,
-            2,
-        )
-
         return {
             "sequential_bandwidth": {
                 "size_mb": size_mb,
@@ -139,8 +122,5 @@ class MemoryBenchmark(Benchmark):
                 "total_gb": round(mem.total / (1024**3), 2),
                 "available_gb": round(mem.available / (1024**3), 2),
                 "used_percent": mem.percent,
-            },
-            "scores": {
-                "memory_score": memory_score,
             },
         }
