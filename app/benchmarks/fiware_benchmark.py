@@ -113,7 +113,14 @@ class FIWAREBenchmark(Benchmark):
 
     async def run(self, params: dict | None = None) -> dict:
         p = params or {}
-        orion_url = (p.get("orion_url") or settings.ORION_URL or "http://localhost:1026").rstrip("/")
+        raw_target = (p.get("orion_ip") or p.get("orion_url") or settings.ORION_URL or "localhost").strip().rstrip("/")
+        if not raw_target.startswith("http://") and not raw_target.startswith("https://"):
+            if ":" in raw_target:
+                orion_url = f"http://{raw_target}"
+            else:
+                orion_url = f"http://{raw_target}:1026"
+        else:
+            orion_url = raw_target
         num_entities = int(p.get("num_entities", 50))
         batch_size = int(p.get("batch_size", 25))
 

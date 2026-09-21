@@ -92,8 +92,13 @@
         const selected = [...document.querySelectorAll('.benchmark-item input:checked')].map(cb => cb.value);
         if (!selected.length) { toast('Select at least one benchmark', 'error'); return; }
         const profile = document.querySelector('input[name="run-profile"]:checked')?.value || 'bare';
-        const orionUrl = document.getElementById('input-orion-url')?.value?.trim();
-        const params = orionUrl ? { orion_url: orionUrl } : {};
+        let orionHost = (document.getElementById('input-orion-ip')?.value || document.getElementById('input-orion-url')?.value || '').trim();
+        let params = {};
+        if (orionHost) {
+            // Strip any accidentally included http:// or :1026
+            orionHost = orionHost.replace(/^https?:\/\//, '').replace(/:1026\/?$/, '').replace(/\/$/, '');
+            params.orion_url = `http://${orionHost}:1026`;
+        }
 
         const btn = document.getElementById('btn-run');
         btn.disabled = true;
