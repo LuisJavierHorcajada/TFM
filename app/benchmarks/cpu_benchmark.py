@@ -22,10 +22,10 @@ MATRIX_SIZE = 300          # 300x300 floating-point matrix multiplication
 COMPRESSION_MB = 32        # 32MB zlib compression
 COMPRESSION_LEVEL = 6
 
-# Baseline reference times (in seconds) on a standard 1 vCPU baseline machine (1000 = baseline)
-REF_PRIME_TIME = 3.5
-REF_MATRIX_TIME = 2.5
-REF_COMPRESSION_TIME = 1.5
+# Baseline reference times (in seconds) on a laptop running an Intel i7-8750H)
+REF_PRIME_TIME = 6.5533
+REF_MATRIX_TIME = 2.0503
+REF_COMPRESSION_TIME = 0.9586
 # -------------------------------
 
 
