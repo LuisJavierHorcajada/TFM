@@ -22,7 +22,7 @@ MATRIX_SIZE = 300          # 300x300 floating-point matrix multiplication
 COMPRESSION_MB = 32        # 32MB zlib compression
 COMPRESSION_LEVEL = 6
 
-# Baseline reference times (in seconds) on a laptop running an Intel i7-8750H)
+# Baseline reference times (in seconds) on a laptop running an Intel i7-8750H, 6 cores 2.2 GHz Base Frequency
 REF_PRIME_TIME = 6.5533
 REF_MATRIX_TIME = 2.0503
 REF_COMPRESSION_TIME = 0.9586
