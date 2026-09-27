@@ -121,8 +121,8 @@ class FIWAREBenchmark(Benchmark):
                 orion_url = f"http://{raw_target}:1026"
         else:
             orion_url = raw_target
-        num_entities = int(p.get("num_entities", 50))
-        batch_size = int(p.get("batch_size", 25))
+        num_entities = int(p.get("num_entities", 500))
+        batch_size = int(p.get("batch_size", 100))
 
         test_run_id = uuid.uuid4().hex[:8]
         entity_type = f"BenchEntity_{test_run_id}"

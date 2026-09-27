@@ -23,7 +23,7 @@ logger = logging.getLogger("esi_bench.network")
 
 # --- Benchmark Configuration ---
 PING_HOST = "8.8.8.8"
-PING_COUNT = 5
+PING_COUNT = 25
 PING_TIMEOUT = 5
 DNS_DOMAINS = ["google.com", "cloudflare.com", "github.com"]
 
